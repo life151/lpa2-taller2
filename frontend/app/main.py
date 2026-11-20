@@ -1,61 +1,64 @@
-from flask import Flask, render_template, request, send_file, abort
+from flask import Flask, render_template, request, send_file
 import requests
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import mm
-from io import BytesIO
+import io
 import os
+from fpdf import FPDF
 
 app = Flask(__name__)
-BACKEND_URL = os.getenv('BACKEND_URL', 'http://backend:8000')
 
-@app.route('/')
+API_URL = os.getenv("API_URL", "http://backend:8000")
+
+@app.route("/")
 def index():
-    return render_template('index.html')
+    return render_template("index.html")
 
-@app.route('/generar-pdf', methods=['POST'])
+@app.route("/generar-pdf", methods=["POST"])
 def generar_pdf():
-    try:
-        id_factura = request.form['id_factura']
-        response = requests.get(f'{BACKEND_URL}/facturas/v1/{id_factura}')
-        
-        if response.status_code != 200:
-            abort(404, description="Factura no encontrada")
-            
-        factura = response.json()
-        
-        # TODO: Crear buffer y doc para la creación del PDF
-        
+    numero = request.form.get("numero_factura") or request.form.get("id_factura") or "FAC-2025-001"
 
-        # TODO: Adicionar el Título, ID
+    # Pedir datos al backend
+    resp = requests.get(f"{API_URL}/facturas/v1/{numero}")
+    data = resp.json()
 
-        
-        # TODO: Agregar Información de la Empresa
+    # Crear PDF - aquí la variable es pdf, no doc
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 10, f"Factura {data['numero_factura']}", ln=True)
+    pdf.set_font("Arial", "", 12)
+    pdf.cell(0, 10, f"Fecha: {data['fecha_emision']}", ln=True)
+    pdf.cell(0, 10, f"Empresa: {data['empresa']['nombre']}", ln=True)
+    pdf.cell(0, 10, f"Cliente: {data['cliente']['nombre']}", ln=True)
+    pdf.ln(5)
 
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(80, 10, "Descripcion", border=1)
+    pdf.cell(20, 10, "Cant", border=1)
+    pdf.cell(40, 10, "Precio", border=1)
+    pdf.cell(40, 10, "Total", border=1, ln=True)
 
-        # TODO: Agregar Información del Cliente
+    pdf.set_font("Arial", "", 12)
+    for item in data['detalle']:
+        pdf.cell(80, 10, item['descripcion'][:35], border=1)
+        pdf.cell(20, 10, str(item['cantidad']), border=1)
+        pdf.cell(40, 10, str(item['precio_unitario']), border=1)
+        pdf.cell(40, 10, str(item['total']), border=1, ln=True)
 
+    pdf.ln(5)
+    pdf.cell(0, 10, f"Subtotal: ${data['subtotal']}", ln=True)
+    pdf.cell(0, 10, f"Impuesto: ${data['impuesto']}", ln=True)
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(0, 10, f"Total: ${data['total']}", ln=True)
 
-        # TODO: Adicionar el Detalle de la Factura: cantidad, descripción, precio unitario y total
+    buffer = io.BytesIO(pdf.output())
+    buffer.seek(0)
 
+    return send_file(
+        buffer,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"{numero}.pdf"
+    )
 
-        # TODO: Adicionar Subtotal, impuesto y Total
-
-
-        # Generar el doc y limpiar el buffer
-        doc.build(elements)
-        buffer.seek(0)
-        
-        # TODO: Retornar a la página el PDF para visualizar y descargar
-
-        
-    except requests.exceptions.ConnectionError:
-        abort(503, description="Error de conexión con el servidor")
-    except Exception as e:
-        abort(500, description=str(e))
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=3000, debug=True)
-
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=3000, debug=True)

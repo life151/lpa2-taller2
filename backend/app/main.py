@@ -4,6 +4,9 @@ import random
 
 app = FastAPI(title="API de Facturas Fake", version="1.0")
 
+@app.get("/")
+def health():
+    return {"status": "ok"}
 fake = Faker("es_ES")
 
 @app.get("/facturas/v1/{numero_factura}")
